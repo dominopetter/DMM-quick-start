@@ -1,50 +1,44 @@
-import pickle
-import uuid
-import datetime
 import mlflow
 import mlflow.sklearn
-from mlflow.tracking import MlflowClient
 from sklearn.tree import DecisionTreeRegressor
-from domino_data_capture.data_capture_client import DataCaptureClient
-import pandas as pd  # Added to handle DataFrame creation for feature importances
+import numpy as np
+import pandas as pd
 
-features = ["bedrooms", "bathrooms","sqft_living","sqft_lot","floors",
-            "waterfront","view","condition","grade", "sqft_above",
-            "sqft_basement","yr_built","yr_renovated","zipcode","lat","long",
-            "sqft_living15","sqft_lot15"]
+# Feature list for context (not actually used in training here)
+features = ["bedrooms", "bathrooms", "sqft_living", "sqft_lot", "floors",
+            "waterfront", "view", "condition", "grade", "sqft_above",
+            "sqft_basement", "yr_built", "yr_renovated", "zipcode", "lat", "long",
+            "sqft_living15", "sqft_lot15"]
 
-target = ["price"]
+# Generate multiple runs with varied hyperparameters
+for depth in [3, 5, 7]:
+    for min_samples_split in [2, 5]:
+        with mlflow.start_run():
+            # Create model with different hyperparameters
+            model = DecisionTreeRegressor(max_depth=depth, min_samples_split=min_samples_split)
 
-data_capture_client = DataCaptureClient(features, target)
+            # Dummy training for demo (no real data needed)
+            X_dummy = [[0] * len(features)] * 10
+            y_dummy = list(range(10))
+            model.fit(X_dummy, y_dummy)
 
-model_file_name = "price_dt_py.sav"
-model = pickle.load(open(model_file_name, 'rb'))
+            # Log parameters to generate branching lines
+            mlflow.log_param("model_type", "DecisionTreeRegressor")
+            mlflow.log_param("max_depth", depth)
+            mlflow.log_param("min_samples_split", min_samples_split)
 
-# Start MLflow logging and register model
-with mlflow.start_run():
-    # Log base parameter
-    mlflow.log_param("model_type", "DecisionTreeRegressor")
+            # Log varied metrics for visual diversity
+            rmse = 100000 / depth + np.random.randint(-1000, 1000)
+            r2 = 0.5 + (depth * 0.05) - (min_samples_split * 0.01)
+            mlflow.log_metric("rmse", rmse)
+            mlflow.log_metric("r2_score", r2)
 
-    # Log model hyperparameters
-    # (Added for demo purposes to show more tracked parameters)
-    mlflow.log_param("max_depth", model.get_params().get("max_depth"))
-    mlflow.log_param("min_samples_split", model.get_params().get("min_samples_split"))
+            # Log the model
+            mlflow.sklearn.log_model(model, "price_prediction_model")
 
-    # Log the model artifact
-    mlflow.sklearn.log_model(model, "price_prediction_model")
-    run_id = mlflow.active_run().info.run_id
-
-    # Log demo metrics over steps to create a nice curve (Added for visualization)
-    for step in range(10):
-        mlflow.log_metric("rmse", 300000 / (step + 1), step=step)
-        mlflow.log_metric("r2_score", 0.5 + 0.05 * step, step=step)
-
-    # Log feature importances as a CSV artifact (Added to show artifacts)
-    importances = model.feature_importances_
-    importance_df = pd.DataFrame({"feature": features, "importance": importances})
-    importance_df.to_csv("feature_importances.csv", index=False)
-    mlflow.log_artifact("feature_importances.csv")
-
-# Register the model in MLflow registry
-model_uri = f"runs:/{run_id}/price_prediction_model"
-mlflow.register_model(model_uri, "price_prediction_model_registry")
+            # Log dummy feature importances as an artifact
+            importances = np.random.dirichlet(np.ones(len(features)), size=1)[0]
+            importance_df = pd.DataFrame({"feature": features, "importance": importances})
+            importance_file = f"feature_importances_depth{depth}_split{min_samples_split}.csv"
+            importance_df.to_csv(importance_file, index=False)
+            mlflow.log_artifact(importance_file)
